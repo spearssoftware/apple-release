@@ -1,0 +1,83 @@
+name: Archive and upload
+description: >-
+  Select Xcode, archive an iOS app, export it and upload it to App Store
+  Connect with automatic, cloud-managed signing. Run it on macOS after any
+  app-specific preparation (dependency install, project generation, asset sync).
+
+inputs:
+  project:
+    description: .xcodeproj path (set this or workspace)
+    default: ""
+  workspace:
+    description: .xcworkspace path (set this or project)
+    default: ""
+  scheme:
+    description: Scheme to archive
+    required: true
+  export-options:
+    description: ExportOptions.plist path. destination=upload uploads during export; otherwise the .ipa is uploaded with altool.
+    required: true
+  build-number:
+    description: CFBundleVersion (CURRENT_PROJECT_VERSION override)
+    required: true
+  marketing-version:
+    description: Optional MARKETING_VERSION override
+    default: ""
+  configuration:
+    description: Build configuration
+    default: Release
+  build-settings:
+    description: Extra xcodebuild KEY=VALUE settings, one per line
+    default: ""
+  xcode:
+    description: Xcode version prefix to select, e.g. "26" or "27.0" (newest non-beta match). Empty keeps the runner default.
+    default: ""
+  key-id:
+    description: App Store Connect API key ID
+    required: true
+  issuer-id:
+    description: App Store Connect API issuer ID
+    required: true
+  private-key:
+    description: App Store Connect API private key (.p8 contents, raw or base64)
+    required: true
+
+outputs:
+  archive-path:
+    description: Path to the .xcarchive
+    value: ${{ steps.upload.outputs.archive-path }}
+  ipa-path:
+    description: Path to the exported .ipa (empty when the export uploaded directly). Set before the upload, so it survives an upload failure.
+    value: ${{ steps.upload.outputs.ipa-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      if: inputs.xcode != ''
+      shell: bash
+      env:
+        XCODE: ${{ inputs.xcode }}
+      run: '"$GITHUB_ACTION_PATH/../scripts/select-xcode.sh" "$XCODE"'
+
+    - name: Archive, export and upload
+      id: upload
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        WORKSPACE: ${{ inputs.workspace }}
+        SCHEME: ${{ inputs.scheme }}
+        EXPORT_OPTIONS: ${{ inputs.export-options }}
+        BUILD_NUMBER: ${{ inputs.build-number }}
+        MARKETING_VERSION: ${{ inputs.marketing-version }}
+        CONFIGURATION: ${{ inputs.configuration }}
+        BUILD_SETTINGS: ${{ inputs.build-settings }}
+        ASC_KEY_ID: ${{ inputs.key-id }}
+        ASC_ISSUER_ID: ${{ inputs.issuer-id }}
+        ASC_PRIVATE_KEY: ${{ inputs.private-key }}
+      run: |
+        ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
+        export ASC_KEY_PATH
+        # Later caller steps have no use for the key, so it does not outlive this one.
+        trap 'rm -f "$ASC_KEY_PATH"' EXIT
+        OUTPUT_DIR="$RUNNER_TEMP/apple-release" "$GITHUB_ACTION_PATH/../scripts/archive-upload.sh"

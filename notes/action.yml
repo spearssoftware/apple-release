@@ -1,0 +1,74 @@
+name: TestFlight notes
+description: >-
+  Wait for an uploaded build to finish processing, then fill its "What to Test"
+  with the branch, SHA and recent commit subjects of the checked-out commit.
+  Check out the commit that was built (with enough history for the commit list)
+  before using it. Runs on Linux, so the processing wait stays off macOS minutes.
+
+inputs:
+  bundle-id:
+    description: App bundle identifier
+    required: true
+  build-number:
+    description: CFBundleVersion of the build. Leave empty with newest true.
+    default: ""
+  newest:
+    description: Target the most recently uploaded build instead of build-number (retry path)
+    default: "false"
+  marketing-version:
+    description: >-
+      Only match builds of this version. Set it when build numbers restart per
+      version; leave empty for globally unique numbers such as epoch minutes.
+    default: ""
+  branch:
+    description: Branch or tag label for the notes header (a detached checkout cannot recover it)
+    default: ""
+  commit-count:
+    description: Number of commit subjects to list
+    default: "10"
+  timeout:
+    description: Seconds to wait for the build to appear and finish processing
+    default: "1200"
+  key-id:
+    description: App Store Connect API key ID
+    required: true
+  issuer-id:
+    description: App Store Connect API issuer ID
+    required: true
+  private-key:
+    description: App Store Connect API private key (.p8 contents, raw or base64)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.x"
+
+    - name: Install cryptography
+      shell: bash
+      run: python3 -m pip install --quiet --disable-pip-version-check -r "$GITHUB_ACTION_PATH/../requirements.txt"
+
+    - name: Wait for processing and write What to Test
+      shell: bash
+      env:
+        ASC_KEY_ID: ${{ inputs.key-id }}
+        ASC_ISSUER_ID: ${{ inputs.issuer-id }}
+        ASC_PRIVATE_KEY: ${{ inputs.private-key }}
+        BUNDLE_ID: ${{ inputs.bundle-id }}
+        BUILD_NUMBER: ${{ inputs.build-number }}
+        NEWEST: ${{ inputs.newest }}
+        MARKETING_VERSION: ${{ inputs.marketing-version }}
+        BRANCH: ${{ inputs.branch }}
+        COMMIT_COUNT: ${{ inputs.commit-count }}
+        TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        # Both selectors are forwarded as given; the script owns the rule that
+        # exactly one is set, so a dispatch with both filled in fails loudly.
+        args=(--bundle-id "$BUNDLE_ID" --commit-count "$COMMIT_COUNT" --timeout "$TIMEOUT")
+        [[ -n "$BRANCH" ]] && args+=(--branch "$BRANCH")
+        [[ "$NEWEST" == true ]] && args+=(--newest)
+        [[ -n "$BUILD_NUMBER" ]] && args+=(--build-number "$BUILD_NUMBER")
+        [[ -n "$MARKETING_VERSION" ]] && args+=(--marketing-version "$MARKETING_VERSION")
+        python3 "$GITHUB_ACTION_PATH/../scripts/testflight_notes.py" "${args[@]}"

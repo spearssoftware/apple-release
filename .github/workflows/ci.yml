@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python3 -m pip install --quiet --disable-pip-version-check -r requirements.txt
+      - name: Test
+        run: python3 -m unittest discover -s tests -v
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Actionlint
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color
