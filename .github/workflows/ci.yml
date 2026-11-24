@@ -17,12 +17,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
-      - run: python3 -m pip install --quiet --disable-pip-version-check cryptography
+      - run: python3 -m pip install --quiet --disable-pip-version-check -r requirements.txt
       - name: Test
         run: python3 -m unittest discover -s tests -v
       - name: Shellcheck
         run: shellcheck scripts/*.sh
       - name: Actionlint
-        run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
-          ./actionlint -color
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color

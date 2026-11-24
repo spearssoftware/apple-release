@@ -4,7 +4,7 @@
 Usage:
     latest_build.py <bundle-id> <marketing-version>
 
-Credentials come from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH.
+Credentials: ASC_KEY_ID, ASC_ISSUER_ID, and ASC_PRIVATE_KEY or ASC_KEY_PATH.
 """
 import sys
 

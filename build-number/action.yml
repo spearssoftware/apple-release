@@ -3,7 +3,8 @@ description: >-
   Pick the CFBundleVersion for a new upload. "epoch-minutes" needs nothing and
   is unique across versions. "asc-next" is the highest build of the marketing
   version in App Store Connect plus one; give its callers a concurrency group,
-  since two runs at once would pick the same number.
+  since two runs at once would pick the same number, and run it on Linux, since
+  it needs no Mac.
 
 inputs:
   scheme:
@@ -29,9 +30,6 @@ outputs:
   build:
     description: Build number for a new upload
     value: ${{ steps.pick.outputs.build }}
-  latest:
-    description: Highest build already uploaded for the version (asc-next only; 0 if none)
-    value: ${{ steps.pick.outputs.latest }}
 
 runs:
   using: composite
@@ -58,12 +56,8 @@ runs:
           ;;
         asc-next)
           : "${BUNDLE_ID:?asc-next needs bundle-id}" "${MARKETING_VERSION:?asc-next needs marketing-version}"
-          python3 -m pip install --quiet --disable-pip-version-check cryptography
-          ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
-          export ASC_KEY_PATH
-          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          python3 -m pip install --quiet --disable-pip-version-check -r "$GITHUB_ACTION_PATH/../requirements.txt"
           latest="$(python3 "$GITHUB_ACTION_PATH/../scripts/latest_build.py" "$BUNDLE_ID" "$MARKETING_VERSION")"
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
           build=$(( latest + 1 ))
           ;;
         *)

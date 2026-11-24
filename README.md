@@ -76,13 +76,17 @@ jobs:
           private-key: ${{ secrets.ASC_PRIVATE_KEY }}
 ```
 
-With `asc-next` numbering, pass `marketing-version` to `notes` too (numbers
-restart per version) and give the workflow a `concurrency` group so two runs
-cannot pick the same number.
+With `asc-next` numbering, run `build-number` in a Linux job and pass `build`
+to the macOS job, since it installs Python and calls the API. Pass
+`marketing-version` to `notes` too (numbers restart per version), and give the
+workflow a `concurrency` group so two runs cannot pick the same number.
 
-`archive-upload` exports to `$RUNNER_TEMP/apple-release/export`, so a caller
-can save the `.ipa` as an artifact even when the upload fails. Each action
-deletes the key file when its step ends.
+`archive-upload` exports to `$RUNNER_TEMP/apple-release/export`. With export
+options `destination=export` it uploads the `.ipa` with altool, so a caller can
+save the `.ipa` as an artifact even when the upload fails; with
+`destination=upload` the export uploads and there is no `.ipa`. The key file
+it writes for xcodebuild is deleted when its step ends; the other actions keep
+the key in memory.
 
 To rewrite notes for a build already in TestFlight, run the `notes` action on
 its own with the build's number (or `newest: "true"`), from a checkout of the

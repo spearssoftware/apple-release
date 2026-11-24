@@ -9,19 +9,9 @@
 # If the export options set destination=upload, the export uploads; otherwise
 # the exported .ipa is uploaded with altool.
 #
-# Inputs (environment):
-#   PROJECT or WORKSPACE   .xcodeproj / .xcworkspace path (exactly one)
-#   SCHEME                 scheme to archive
-#   EXPORT_OPTIONS         ExportOptions.plist path
-#   BUILD_NUMBER           CURRENT_PROJECT_VERSION override
-#   MARKETING_VERSION      optional MARKETING_VERSION override
-#   CONFIGURATION          build configuration (default Release)
-#   BUILD_SETTINGS         optional extra KEY=VALUE settings, one per line
-#   OUTPUT_DIR             where the archive and export go
-#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH
-#
-# Writes archive-path and ipa-path to $GITHUB_OUTPUT when set, before the
-# upload, so a caller can still save the .ipa if the upload fails.
+# Inputs come from the environment (see archive-upload/action.yml). archive-path
+# and ipa-path go to $GITHUB_OUTPUT before the upload, so a caller can still
+# save the .ipa if the upload fails.
 
 set -euo pipefail
 
@@ -55,14 +45,15 @@ while IFS= read -r line; do
 	[[ -n "${line// /}" ]] && settings+=("${line}")
 done <<<"${BUILD_SETTINGS:-}"
 
+configuration="${CONFIGURATION:-Release}"
 archive="${OUTPUT_DIR}/${SCHEME}.xcarchive"
 export_dir="${OUTPUT_DIR}/export"
 
-echo "==> archive ${SCHEME} (${CONFIGURATION:-Release}, build ${BUILD_NUMBER}${MARKETING_VERSION:+, version ${MARKETING_VERSION}})"
+echo "==> archive ${SCHEME} (${configuration}, build ${BUILD_NUMBER}${MARKETING_VERSION:+, version ${MARKETING_VERSION}})"
 xcodebuild archive \
 	"${container[@]}" \
 	-scheme "${SCHEME}" \
-	-configuration "${CONFIGURATION:-Release}" \
+	-configuration "${configuration}" \
 	-destination generic/platform=iOS \
 	-archivePath "${archive}" \
 	"${auth[@]}" \

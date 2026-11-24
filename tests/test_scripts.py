@@ -1,3 +1,4 @@
+import base64
 import os
 import subprocess
 import sys
@@ -73,18 +74,43 @@ class AscTests(unittest.TestCase):
         self.assertEqual(max(asc.build_number(b) for b in builds), 10)
 
 
+class KeyTests(unittest.TestCase):
+    def test_pem_bytes_accepts_raw_and_base64(self):
+        self.assertEqual(asc.pem_bytes(FAKE_PEM), FAKE_PEM.encode())
+        wrapped = base64.encodebytes(FAKE_PEM.encode()).decode()  # 76-column lines
+        self.assertEqual(asc.pem_bytes(wrapped), FAKE_PEM.encode())
+
+    def test_pem_bytes_rejects_garbage(self):
+        for value in ("bm90IGEga2V5", "not base64 at all \u00e9"):
+            with self.assertRaises(SystemExit):
+                asc.pem_bytes(value)
+
+    def test_token_verifies_with_the_public_key(self):
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+
+        key = ec.generate_private_key(ec.SECP256R1())
+        header, claims, sig = asc.mint_token("KID", "ISS", key).split(".")
+        raw = base64.urlsafe_b64decode(sig + "=" * (-len(sig) % 4))
+        der = encode_dss_signature(int.from_bytes(raw[:32], "big"), int.from_bytes(raw[32:], "big"))
+        key.public_key().verify(der, f"{header}.{claims}".encode(), ec.ECDSA(hashes.SHA256()))
+
+
 class WriteKeyTests(unittest.TestCase):
-    def run_script(self, key):
+    def run_script(self, value):
+        """Returns (result, key file contents or None, key file mode or None)."""
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(
                 [str(ROOT / "scripts" / "write-key.sh"), "KEYID", tmp],
-                env={**os.environ, "ASC_PRIVATE_KEY": key},
+                env={**os.environ, "ASC_PRIVATE_KEY": value},
                 capture_output=True,
                 text=True,
             )
-            content = Path(tmp, "AuthKey_KEYID.p8").read_text() if result.returncode == 0 else None
-            mode = Path(tmp, "AuthKey_KEYID.p8").stat().st_mode & 0o777 if result.returncode == 0 else None
-            return result, content, mode
+            key = Path(tmp, "AuthKey_KEYID.p8")
+            if not key.exists():
+                return result, None, None
+            return result, key.read_text(), key.stat().st_mode & 0o777
 
     def test_raw_key(self):
         result, content, mode = self.run_script(FAKE_PEM)
@@ -93,15 +119,16 @@ class WriteKeyTests(unittest.TestCase):
         self.assertEqual(mode, 0o600)
 
     def test_base64_key(self):
-        import base64
         result, content, _ = self.run_script(base64.b64encode(FAKE_PEM.encode()).decode())
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(content.strip(), FAKE_PEM)
 
-    def test_garbage_is_rejected(self):
-        result, _, _ = self.run_script("bm90IGEga2V5")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("neither a .p8", result.stderr)
+    def test_garbage_is_rejected_and_removed(self):
+        for value in ("bm90IGEga2V5", "!!not base64!!"):
+            result, content, _ = self.run_script(value)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("neither a .p8", result.stderr)
+            self.assertIsNone(content)
 
 
 if __name__ == "__main__":

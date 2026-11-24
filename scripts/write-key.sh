@@ -18,8 +18,8 @@ umask 077
 mkdir -p "${dir}"
 if [[ "${ASC_PRIVATE_KEY}" == *"-----BEGIN"* ]]; then
 	printf '%s\n' "${ASC_PRIVATE_KEY}" >"${path}"
-elif ! printf '%s' "${ASC_PRIVATE_KEY}" | base64 --decode >"${path}" 2>/dev/null; then
-	: # Fall through to the format check below for one clear error.
+else
+	printf '%s' "${ASC_PRIVATE_KEY}" | base64 --decode >"${path}" 2>/dev/null || true
 fi
 
 if ! grep -q -- '-----BEGIN PRIVATE KEY-----' "${path}"; then

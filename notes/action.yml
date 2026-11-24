@@ -48,7 +48,7 @@ runs:
 
     - name: Install cryptography
       shell: bash
-      run: python3 -m pip install --quiet --disable-pip-version-check cryptography
+      run: python3 -m pip install --quiet --disable-pip-version-check -r "$GITHUB_ACTION_PATH/../requirements.txt"
 
     - name: Wait for processing and write What to Test
       shell: bash
@@ -64,10 +64,6 @@ runs:
         COMMIT_COUNT: ${{ inputs.commit-count }}
         TIMEOUT: ${{ inputs.timeout }}
       run: |
-        ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
-        export ASC_KEY_PATH
-        trap 'rm -f "$ASC_KEY_PATH"' EXIT
-
         # Both selectors are forwarded as given; the script owns the rule that
         # exactly one is set, so a dispatch with both filled in fails loudly.
         args=(--bundle-id "$BUNDLE_ID" --commit-count "$COMMIT_COUNT" --timeout "$TIMEOUT")

@@ -4,9 +4,11 @@ minting and a REST client with token refresh and retries.
 Standard library only, apart from `cryptography` for signing, so it runs on the
 Linux runners that do the waiting as well as on macOS.
 
-Credentials come from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH (the .p8).
+Credentials come from ASC_KEY_ID, ASC_ISSUER_ID, and either ASC_PRIVATE_KEY
+(the .p8 contents, raw or base64) or ASC_KEY_PATH (the .p8 file).
 """
 import base64
+import binascii
 import http.client
 import json
 import os
@@ -35,7 +37,7 @@ class Transient(Exception):
     """A failure worth retrying: rate limiting, a 5xx, or a dropped connection."""
 
 
-class Unauthorized(Transient):
+class Unauthorized(Exception):
     """A 401. Retryable exactly once, to cover a token that expired in flight."""
 
 
@@ -43,24 +45,35 @@ def b64url(raw):
     return base64.urlsafe_b64encode(raw).rstrip(b"=")
 
 
-def mint_token(key_id, issuer_id, key_path):
-    """ES256 JWT for the App Store Connect API."""
+def pem_bytes(value):
+    """The .p8 PEM from a secret stored raw or base64-encoded."""
+    if "-----BEGIN" in value:
+        return value.encode()
     try:
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.hazmat.primitives.asymmetric.utils import (
-            decode_dss_signature,
-        )
-        from cryptography.hazmat.primitives.serialization import (
-            load_pem_private_key,
-        )
+        pem = base64.b64decode(value, validate=False)
+    except (binascii.Error, ValueError):
+        pem = b""
+    if b"-----BEGIN PRIVATE KEY-----" not in pem:
+        sys.exit("error: ASC_PRIVATE_KEY is neither a .p8 nor a base64-encoded .p8")
+    return pem
+
+
+def load_key(pem):
+    try:
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
     except ImportError:
         sys.exit(
             "error: the 'cryptography' package is required "
             "(brew install cryptography, or python3 -m pip install cryptography)"
         )
+    return load_pem_private_key(pem, password=None)
 
-    key = load_pem_private_key(Path(key_path).read_bytes(), password=None)
+
+def mint_token(key_id, issuer_id, key):
+    """ES256 JWT for the App Store Connect API, signed with a loaded EC key."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
     now = int(time.time())
     header = {"alg": "ES256", "kid": key_id, "typ": "JWT"}
@@ -94,25 +107,30 @@ class Client:
     token's exp, so the token is minted lazily and refreshed as it ages.
     """
 
-    def __init__(self, key_id, issuer_id, key_path, timeout, interval=30):
+    def __init__(self, key_id, issuer_id, key, timeout, interval=30):
         self.key_id = key_id
         self.issuer_id = issuer_id
-        self.key_path = key_path
+        self.key = key
         self.interval = interval
         self._token = None
         self._minted_at = 0.0
         self.budget(timeout)
 
     @classmethod
-    def from_env(cls, timeout, interval=30):
+    def from_env(cls, timeout):
         key_id = os.environ.get("ASC_KEY_ID")
         issuer_id = os.environ.get("ASC_ISSUER_ID")
+        key_value = os.environ.get("ASC_PRIVATE_KEY")
         key_path = os.path.expanduser(os.environ.get("ASC_KEY_PATH", ""))
-        if not key_id or not issuer_id or not key_path:
-            sys.exit("error: set ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH")
-        if not Path(key_path).is_file():
+        if not key_id or not issuer_id or not (key_value or key_path):
+            sys.exit("error: set ASC_KEY_ID, ASC_ISSUER_ID, and ASC_PRIVATE_KEY or ASC_KEY_PATH")
+        if key_value:
+            pem = pem_bytes(key_value)
+        elif Path(key_path).is_file():
+            pem = Path(key_path).read_bytes()
+        else:
             sys.exit(f"error: private key not found at {key_path}")
-        return cls(key_id, issuer_id, key_path, timeout=timeout, interval=interval)
+        return cls(key_id, issuer_id, load_key(pem), timeout=timeout)
 
     def budget(self, seconds):
         """Give the calls that follow their own window to retry within.
@@ -126,7 +144,7 @@ class Client:
     def token(self):
         age = time.monotonic() - self._minted_at
         if self._token is None or age > TOKEN_REFRESH:
-            self._token = mint_token(self.key_id, self.issuer_id, self.key_path)
+            self._token = mint_token(self.key_id, self.issuer_id, self.key)
             self._minted_at = time.monotonic()
         return self._token
 

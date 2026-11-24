@@ -21,7 +21,7 @@ Pass --marketing-version when build numbers repeat across versions (a
 numbers such as epoch minutes, where a version that drifted from the archive's
 would silently match nothing.
 
-Credentials come from ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH.
+Credentials: ASC_KEY_ID, ASC_ISSUER_ID, and ASC_PRIVATE_KEY or ASC_KEY_PATH.
 """
 import argparse
 import subprocess
@@ -70,31 +70,22 @@ def wait_for_build(client, app_id, build_number, marketing_version=None):
     expected transient state here, not an error.
     """
     target = build_number or "most recent"
-
+    build = None
     while True:
-        build = find_build(client, app_id, build_number, marketing_version)
         if build:
-            break
-        if time.monotonic() >= client.deadline:
-            raise RuntimeError(f"build {target} never appeared before the deadline")
-        log(f"  build {target} not visible yet; waiting {client.interval}s")
-        time.sleep(client.interval)
-
-    while True:
-        attrs = build["attributes"]
-        state = attrs["processingState"]
+            build = client.request("GET", f"/v1/builds/{build['id']}")["data"]
+        else:
+            build = find_build(client, app_id, build_number, marketing_version)
+        state = build["attributes"]["processingState"] if build else "not visible yet"
         if state in DONE_STATES:
             break
         if time.monotonic() >= client.deadline:
-            raise RuntimeError(f"build {attrs['version']} still {state} at the deadline")
-        log(f"  build {attrs['version']} is {state}; waiting {client.interval}s")
+            raise RuntimeError(f"build {target} still {state} at the deadline")
+        log(f"  build {target} is {state}; waiting {client.interval}s")
         time.sleep(client.interval)
-        build = client.request("GET", f"/v1/builds/{build['id']}")["data"]
 
-    state = build["attributes"]["processingState"]
     if state != "VALID":
         raise RuntimeError(f"build {build['attributes']['version']} is {state}")
-
     return build
 
 
@@ -108,19 +99,10 @@ def find_en_us(locs):
 
 def write_notes(client, build_id, notes):
     """PATCH the existing en-US localization, or POST one if there isn't one."""
-    existing = localizations(client, build_id)
-
     # The attribute is `whatsNew`, NOT `whatsToTest`: TestFlight's UI labels the
     # field "What to Test", but sending `whatsToTest` fails with
-    # ENTITY_ERROR.ATTRIBUTE.UNKNOWN. The attribute keys are logged here and in
-    # verify_notes so the live field name stays checkable from the build log.
-    for loc in existing:
-        log(
-            f"  existing localization {loc['attributes'].get('locale')}: "
-            f"attributes {sorted(loc['attributes'])}"
-        )
-
-    en_us = find_en_us(existing)
+    # ENTITY_ERROR.ATTRIBUTE.UNKNOWN. verify_notes logs the live attribute keys.
+    en_us = find_en_us(localizations(client, build_id))
     if en_us:
         client.request(
             "PATCH",
@@ -236,7 +218,6 @@ def parse_args(argv=None):
     )
     parser.add_argument("--commit-count", type=int, default=10)
     parser.add_argument("--timeout", type=int, default=1200)
-    parser.add_argument("--interval", type=int, default=30)
     args = parser.parse_args(argv)
 
     # An empty --build-number must not silently fall through to "newest": that
@@ -253,11 +234,11 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
 
-    notes = truncate(compose_notes(args.branch, args.build_number, args.commit_count).strip())
+    notes = truncate(compose_notes(args.branch, args.build_number, args.commit_count))
     log("Notes to write:")
     log("\n".join("  | " + line for line in notes.splitlines()))
 
-    client = Client.from_env(timeout=args.timeout, interval=args.interval)
+    client = Client.from_env(timeout=args.timeout)
 
     app_id = resolve_app_id(client, args.bundle_id)
     log(f"Resolved {args.bundle_id} to app {app_id}")
