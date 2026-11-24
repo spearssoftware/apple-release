@@ -80,6 +80,10 @@ With `asc-next` numbering, pass `marketing-version` to `notes` too (numbers
 restart per version) and give the workflow a `concurrency` group so two runs
 cannot pick the same number.
 
+`archive-upload` exports to `$RUNNER_TEMP/apple-release/export`, so a caller
+can save the `.ipa` as an artifact even when the upload fails. Each action
+deletes the key file when its step ends.
+
 To rewrite notes for a build already in TestFlight, run the `notes` action on
 its own with the build's number (or `newest: "true"`), from a checkout of the
 commit that was built.

@@ -61,6 +61,7 @@ runs:
           python3 -m pip install --quiet --disable-pip-version-check cryptography
           ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
           export ASC_KEY_PATH
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
           latest="$(python3 "$GITHUB_ACTION_PATH/../scripts/latest_build.py" "$BUNDLE_ID" "$MARKETING_VERSION")"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           build=$(( latest + 1 ))

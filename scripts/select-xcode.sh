@@ -9,7 +9,7 @@
 set -euo pipefail
 
 prefix="${1:?usage: select-xcode.sh <version-prefix>}"
-xcode="$(find /Applications -maxdepth 1 -name "Xcode_${prefix}*.app" ! -iname '*beta*' | sort -V | tail -n 1)"
+xcode="$(find /Applications -maxdepth 1 \( -name "Xcode_${prefix}.app" -o -name "Xcode_${prefix}.*.app" \) ! -iname '*beta*' | sort -V | tail -n 1)"
 if [[ -z "${xcode}" ]]; then
 	echo "error: no release Xcode ${prefix} on this runner. Installed:" >&2
 	find /Applications -maxdepth 1 -name 'Xcode*.app' >&2

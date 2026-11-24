@@ -18,11 +18,12 @@ umask 077
 mkdir -p "${dir}"
 if [[ "${ASC_PRIVATE_KEY}" == *"-----BEGIN"* ]]; then
 	printf '%s\n' "${ASC_PRIVATE_KEY}" >"${path}"
-else
-	printf '%s' "${ASC_PRIVATE_KEY}" | base64 --decode >"${path}"
+elif ! printf '%s' "${ASC_PRIVATE_KEY}" | base64 --decode >"${path}" 2>/dev/null; then
+	: # Fall through to the format check below for one clear error.
 fi
 
 if ! grep -q -- '-----BEGIN PRIVATE KEY-----' "${path}"; then
+	rm -f "${path}"
 	echo "error: the App Store Connect private key is neither a .p8 nor a base64-encoded .p8" >&2
 	exit 1
 fi

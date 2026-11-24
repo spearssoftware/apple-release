@@ -20,7 +20,8 @@
 #   OUTPUT_DIR             where the archive and export go
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH
 #
-# Writes archive-path and ipa-path to $GITHUB_OUTPUT when set.
+# Writes archive-path and ipa-path to $GITHUB_OUTPUT when set, before the
+# upload, so a caller can still save the .ipa if the upload fails.
 
 set -euo pipefail
 
@@ -74,13 +75,20 @@ xcodebuild -exportArchive \
 	-exportPath "${export_dir}" \
 	"${auth[@]}"
 
-ipa=""
 destination="$(/usr/libexec/PlistBuddy -c 'Print :destination' "${EXPORT_OPTIONS}" 2>/dev/null || echo export)"
+ipa=""
+if [[ "${destination}" != upload ]]; then
+	ipa="$(find "${export_dir}" -maxdepth 1 -name '*.ipa' | head -n 1)"
+	[[ -n "${ipa}" ]] || { echo "error: the export produced no .ipa in ${export_dir}" >&2; exit 1; }
+fi
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+	echo "archive-path=${archive}" >>"${GITHUB_OUTPUT}"
+	echo "ipa-path=${ipa}" >>"${GITHUB_OUTPUT}"
+fi
+
 if [[ "${destination}" == upload ]]; then
 	echo "==> uploaded by the export (destination=upload)"
 else
-	ipa="$(find "${export_dir}" -maxdepth 1 -name '*.ipa' | head -n 1)"
-	[[ -n "${ipa}" ]] || { echo "error: the export produced no .ipa in ${export_dir}" >&2; exit 1; }
 	echo "==> upload ${ipa}"
 	# altool finds the key by name (AuthKey_<id>.p8) in API_PRIVATE_KEYS_DIR.
 	API_PRIVATE_KEYS_DIR="$(dirname "${ASC_KEY_PATH}")" xcrun altool --upload-app \
@@ -91,7 +99,3 @@ else
 fi
 
 echo "==> build ${BUILD_NUMBER} uploaded"
-if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-	echo "archive-path=${archive}" >>"${GITHUB_OUTPUT}"
-	echo "ipa-path=${ipa}" >>"${GITHUB_OUTPUT}"
-fi

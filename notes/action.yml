@@ -50,20 +50,12 @@ runs:
       shell: bash
       run: python3 -m pip install --quiet --disable-pip-version-check cryptography
 
-    - name: Write App Store Connect key
-      id: key
-      shell: bash
-      env:
-        ASC_PRIVATE_KEY: ${{ inputs.private-key }}
-        KEY_ID: ${{ inputs.key-id }}
-      run: echo "path=$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$KEY_ID" "$RUNNER_TEMP/asc-private-keys")" >> "$GITHUB_OUTPUT"
-
     - name: Wait for processing and write What to Test
       shell: bash
       env:
         ASC_KEY_ID: ${{ inputs.key-id }}
         ASC_ISSUER_ID: ${{ inputs.issuer-id }}
-        ASC_KEY_PATH: ${{ steps.key.outputs.path }}
+        ASC_PRIVATE_KEY: ${{ inputs.private-key }}
         BUNDLE_ID: ${{ inputs.bundle-id }}
         BUILD_NUMBER: ${{ inputs.build-number }}
         NEWEST: ${{ inputs.newest }}
@@ -72,6 +64,10 @@ runs:
         COMMIT_COUNT: ${{ inputs.commit-count }}
         TIMEOUT: ${{ inputs.timeout }}
       run: |
+        ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
+        export ASC_KEY_PATH
+        trap 'rm -f "$ASC_KEY_PATH"' EXIT
+
         # Both selectors are forwarded as given; the script owns the rule that
         # exactly one is set, so a dispatch with both filled in fails loudly.
         args=(--bundle-id "$BUNDLE_ID" --commit-count "$COMMIT_COUNT" --timeout "$TIMEOUT")

@@ -47,7 +47,7 @@ outputs:
     description: Path to the .xcarchive
     value: ${{ steps.upload.outputs.archive-path }}
   ipa-path:
-    description: Path to the exported .ipa (empty when the export uploaded directly)
+    description: Path to the exported .ipa (empty when the export uploaded directly). Set before the upload, so it survives an upload failure.
     value: ${{ steps.upload.outputs.ipa-path }}
 
 runs:
@@ -78,4 +78,6 @@ runs:
       run: |
         ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
         export ASC_KEY_PATH
+        # Later caller steps have no use for the key, so it does not outlive this one.
+        trap 'rm -f "$ASC_KEY_PATH"' EXIT
         OUTPUT_DIR="$RUNNER_TEMP/apple-release" "$GITHUB_ACTION_PATH/../scripts/archive-upload.sh"
