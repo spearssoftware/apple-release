@@ -66,7 +66,10 @@ def load_key(pem):
             "error: the 'cryptography' package is required "
             "(brew install cryptography, or python3 -m pip install cryptography)"
         )
-    return load_pem_private_key(pem, password=None)
+    try:
+        return load_pem_private_key(pem, password=None)
+    except ValueError:
+        sys.exit("error: the App Store Connect private key is not a valid .p8 private key")
 
 
 def mint_token(key_id, issuer_id, key):

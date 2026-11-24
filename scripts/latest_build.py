@@ -21,6 +21,9 @@ def main(argv):
         "/v1/builds",
         {"filter[app]": app_id, "filter[preReleaseVersion.version]": version, "limit": "200"},
     )
+    dotted = [b["attributes"]["version"] for b in builds if not b["attributes"]["version"].isdigit()]
+    if dotted:
+        raise RuntimeError(f"builds {', '.join(dotted)} are not plain integers; asc-next cannot pick the next one")
     print(max((build_number(b) for b in builds), default=0))
 
 

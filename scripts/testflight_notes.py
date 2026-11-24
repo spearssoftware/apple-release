@@ -80,6 +80,8 @@ def wait_for_build(client, app_id, build_number, marketing_version=None):
         if state in DONE_STATES:
             break
         if time.monotonic() >= client.deadline:
+            if not build:
+                raise RuntimeError(f"build {target} never appeared before the deadline")
             raise RuntimeError(f"build {target} still {state} at the deadline")
         log(f"  build {target} is {state}; waiting {client.interval}s")
         time.sleep(client.interval)
