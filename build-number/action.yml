@@ -1,0 +1,74 @@
+name: Build number
+description: >-
+  Pick the CFBundleVersion for a new upload. "epoch-minutes" needs nothing and
+  is unique across versions. "asc-next" is the highest build of the marketing
+  version in App Store Connect plus one; give its callers a concurrency group,
+  since two runs at once would pick the same number.
+
+inputs:
+  scheme:
+    description: epoch-minutes or asc-next
+    default: epoch-minutes
+  bundle-id:
+    description: App bundle identifier (asc-next)
+    default: ""
+  marketing-version:
+    description: Marketing version whose builds are counted (asc-next)
+    default: ""
+  key-id:
+    description: App Store Connect API key ID (asc-next)
+    default: ""
+  issuer-id:
+    description: App Store Connect API issuer ID (asc-next)
+    default: ""
+  private-key:
+    description: App Store Connect API private key, raw or base64 (asc-next)
+    default: ""
+
+outputs:
+  build:
+    description: Build number for a new upload
+    value: ${{ steps.pick.outputs.build }}
+  latest:
+    description: Highest build already uploaded for the version (asc-next only; 0 if none)
+    value: ${{ steps.pick.outputs.latest }}
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.scheme == 'asc-next'
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.x"
+
+    - name: Pick the build number
+      id: pick
+      shell: bash
+      env:
+        SCHEME: ${{ inputs.scheme }}
+        BUNDLE_ID: ${{ inputs.bundle-id }}
+        MARKETING_VERSION: ${{ inputs.marketing-version }}
+        ASC_KEY_ID: ${{ inputs.key-id }}
+        ASC_ISSUER_ID: ${{ inputs.issuer-id }}
+        ASC_PRIVATE_KEY: ${{ inputs.private-key }}
+      run: |
+        case "$SCHEME" in
+        epoch-minutes)
+          build=$(( $(date +%s) / 60 ))
+          ;;
+        asc-next)
+          : "${BUNDLE_ID:?asc-next needs bundle-id}" "${MARKETING_VERSION:?asc-next needs marketing-version}"
+          python3 -m pip install --quiet --disable-pip-version-check cryptography
+          ASC_KEY_PATH="$("$GITHUB_ACTION_PATH/../scripts/write-key.sh" "$ASC_KEY_ID" "$RUNNER_TEMP/asc-private-keys")"
+          export ASC_KEY_PATH
+          latest="$(python3 "$GITHUB_ACTION_PATH/../scripts/latest_build.py" "$BUNDLE_ID" "$MARKETING_VERSION")"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          build=$(( latest + 1 ))
+          ;;
+        *)
+          echo "::error::Unknown build-number scheme '$SCHEME'; use epoch-minutes or asc-next."
+          exit 1
+          ;;
+        esac
+        echo "Build number: $build"
+        echo "build=$build" >> "$GITHUB_OUTPUT"
